@@ -1,0 +1,27 @@
+{
+  "name": "influx-express",
+  "version": "0.0.1",
+  "description": "Influxdb nstrumentation for expressjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cdwv/influx-express.git"
+  },
+  "keywords": [
+    "influx",
+    "express"
+  ],
+  "author": "Grzegorz Daszuta <grzegorz.daszuta@codewave.pl>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/cdwv/influx-express/issues"
+  },
+  "homepage": "https://github.com/cdwv/influx-express#readme",
+  "dependencies": {
+    "debug": "^2.2.0",
+    "influx-udp": "^1.0.1"
+  }
+}
