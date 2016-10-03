@@ -30,7 +30,7 @@ module.exports = function(config, express) {
     }
 
     function getResponseTime(req, res, digits) {
-        if (!req._startAt || !res._startAt) {
+        if (!req._influx.startAt || !res._influx.startAt) {
             // missing request and/or response start time
             return;
         }
