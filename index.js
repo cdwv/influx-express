@@ -12,7 +12,7 @@
 
 var Influx = require('./lib/influx-udp');
 var os = require('os');
-var debug = require('debug')('przepisy:influx');
+var debug = require('debug')(['influx-express','main'].join(':'));
 var util = require('util');
 
 module.exports = function(config, express) {
