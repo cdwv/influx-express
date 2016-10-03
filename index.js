@@ -23,7 +23,16 @@ module.exports = function(config, express) {
 
     function wrapMethod(mod, modName, method, wrapper) {
         var original = mod[method];
+
+        if(original.__influx_wrapped) {
+          debug('method %s already wrapped', modName);
+          return;
+        }
+
+        debug('wrapped method %s', modName);
+
         var wrapped = wrapper(original, method);
+        wrapped.__influx_wrapped = true;
         mod[method] = wrapped;
     }
 
@@ -47,21 +56,44 @@ module.exports = function(config, express) {
 
       return path;
     }
-
+/*
     wrapMethod(express.response,
         'express.response',
-        'end',
-        wrapEnd.bind(null, 4));
-
+        'send',
+        wrapSend.bind(null));
+*/
     wrapMethod(express.Router,
         'express.Router',
         'process_params',
-        wrapProcessParams.bind(null, 4));
+        wrapProcessParams.bind(null));
 
+    function wrapSend(send) {
+      return function() {
+        debug('wrapped response.send');
+        send.apply(this, arguments);
+      }
+    }
 
-    function wrapEnd(version, end) {
+    function wrapLayerHandleRequest(handle_request) {
+      return function wrappedHandleRequest(req, res, next) {
+
+        if(!res.end.__influx_wrapped) {
+          var wrapped = wrapEnd(res.end);
+          wrapped.__influx_wrapped = true;
+          res.end = wrapped;
+        }
+
+        debug('wrapped handle_request');
+        handle_request.apply(this, arguments);
+ 
+      }
+    }
+
+    function wrapEnd(end) {
         return function() {
+            debug('wrapped response.end');
             end.apply(this, arguments);
+
             if(!this.__influxReporter) {
               debug("Request wasn't prepared");
               return;
@@ -74,6 +106,7 @@ module.exports = function(config, express) {
 
             var report = {
                 [config.influx.dbpath]: [{
+                tags: {
                     "app": config.appName,
                     "env": process.env.NODE_ENV,
                     "host": os.hostname(),
@@ -81,8 +114,11 @@ module.exports = function(config, express) {
                     "method": this.__influxReporter.method,
                     "url": this.__influxReporter.url,
                     "path": getRoutePath(this.__influxReporter.path, this.__influxReporter.params, this.__influxReporter.query),
+                },
+                values: {
                     "duration": new Date() - this.__influxReporter.startTime,
-                }]
+                }
+               }]
             };
 
             this.__influxReporter.sent = true;
@@ -92,9 +128,18 @@ module.exports = function(config, express) {
         };
     }
 
-    function wrapProcessParams(version, original) {
+    function wrapProcessParams(original) {
         return function(layer, called, req, res, done) {
             original.apply(this, arguments);
+
+            if(layer && layer.constructor && layer.constructor.prototype.handle_request) {
+              wrapMethod(
+                  layer.constructor.prototype,
+                  'express.Layer',
+                  'handle_request',
+                  wrapLayerHandleRequest
+              );
+            }
 
             res.__influxReporter = res.__influxReporter || {
                 startTime: Date.now(),
