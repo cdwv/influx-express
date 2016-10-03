@@ -102,7 +102,6 @@ module.exports = function(config, express) {
             req._influx.sent = true;
 
             debug(report);
-            console.log(report);
             influx.send(report);
 
         }
