@@ -3,170 +3,116 @@
  * @Date:   2016-10-01T20:08:29+02:00
  * @Email:  grzegorz.daszuta@codewave.pl
  * @Last modified by:   Grzegorz Daszuta
- * @Last modified time: 2016-10-03T10:18:10+02:00
+ * @Last modified time: 2016-10-03T16:43:05+02:00
  */
 
- /* jshint node: true */
- /* jshint esversion: 6 */
- 'use strict';
+/* jshint node: true */
+/* jshint esversion: 6 */
+'use strict';
 
 var Influx = require('./lib/influx-udp');
 var os = require('os');
-var debug = require('debug')(['influx-express','main'].join(':'));
+var debug = require('debug')(['influx-express', 'main'].join(':'));
 var util = require('util');
+
+var onFinished = require('on-finished');
+var onHeaders = require('on-headers');
 
 module.exports = function(config, express) {
     var influx = new Influx({
-      host: config.influx.host,
-      port: config.influx.port,
+        host: config.influx.host,
+        port: config.influx.port,
     });
 
-    function wrapMethod(mod, modName, method, wrapper) {
-        var original = mod[method];
+    function recordStartTime() {
+        this._influx.startAt = process.hrtime();
+        this._influx.startTime = new Date();
+    }
 
-        if(original.__influx_wrapped) {
-          debug('method %s already wrapped', modName);
-          return;
+    function getResponseTime(req, res, digits) {
+        if (!req._startAt || !res._startAt) {
+            // missing request and/or response start time
+            return;
         }
 
-        debug('wrapped method %s', modName);
+        var ms = (res._influx.startAt[0] - req._influx.startAt[0]) * 1e3 +
+            (res._influx.startAt[1] - req._influx.startAt[1]) * 1e-6
 
-        var wrapped = wrapper(original, method);
-        wrapped.__influx_wrapped = true;
-        mod[method] = wrapped;
+        return ms.toFixed(digits === undefined ? 3 : digits)
     }
 
-    function getRoutePath(requestPath, params, query) {
-      var path = requestPath;
-
-      query = query || [];
-
-      Object.keys(params).forEach(function(k) {
-          if(!params[k]) return;
-
-          debug('replace', params[k], util.format(':%s', k));
-          path = path.replace(params[k], util.format(':%s', k));
-      }.bind(this));
-
-      if (query.length) {
-        path = util.format('%s?%s', path, query.join('&'));
-      }
-
-      debug('path from %s to %s', requestPath, path);
-
-      return path;
-    }
-/*
-    wrapMethod(express.response,
-        'express.response',
-        'send',
-        wrapSend.bind(null));
-*/
-    wrapMethod(express.Router,
-        'express.Router',
-        'process_params',
-        wrapProcessParams.bind(null));
-
-    function wrapSend(send) {
-      return function() {
-        debug('wrapped response.send');
-        send.apply(this, arguments);
-      }
-    }
-
-    function wrapLayerHandleRequest(handle_request) {
-      return function wrappedHandleRequest(req, res, next) {
-
-        if(!res.end.__influx_wrapped) {
-          var wrapped = wrapEnd(res.end);
-          wrapped.__influx_wrapped = true;
-          res.end = wrapped;
+    function getRoute(req) {
+        var route;
+        if (req.route) {
+            route = req.route.path;
         }
+        if (!req.route) {
+            route = req.baseUrl;
 
-        debug('wrapped handle_request');
-        handle_request.apply(this, arguments);
- 
-      }
-    }
-
-    function wrapEnd(end) {
-        return function() {
-            debug('wrapped response.end');
-            end.apply(this, arguments);
-
-            if(!this.__influxReporter) {
-              debug("Request wasn't prepared");
-              return;
+            if (req.params) {
+                Object.keys(req.params).forEach(function(k) {
+                    route = route.replace(req.params[k], util.format(':%s', k));
+                });
             }
+        }
+        if (req.query && Object.keys(req.query).length > 0) {
+            route += '?' + Object.keys(req.query).join('&');
+        }
+        return route;
+    }
 
-             if(this.__influxReporter.sent) {
-              debug("Log data already sent");
-              return;
+    return function influxLogger(req, res, next) {
+        req._influx = {
+            startAt: undefined,
+            startTime: undefined,
+        };
+
+        res._influx = {
+            startAt: undefined,
+            startTime: undefined,
+        };
+
+        recordStartTime.call(req);
+
+        function logRequest() {
+            debug(req._influx, res._influx);
+            if (req.rendrApp) debug(req.rendrApp.req.route);
+            if (req._influx_sent) {
+                debug('Already logged');
+                return;
             }
 
             var report = {
                 [config.influx.dbpath]: [{
-                tags: {
-                    "app": config.appName,
-                    "env": process.env.NODE_ENV,
-                    "host": os.hostname(),
-                    "instance": process.env.NODE_APP_INSTANCE,
-                    "method": this.__influxReporter.method,
-                    "url": this.__influxReporter.url,
-                    "path": getRoutePath(this.__influxReporter.path, this.__influxReporter.params, this.__influxReporter.query),
-                },
-                values: {
-                    "duration": new Date() - this.__influxReporter.startTime,
-                }
-               }]
+                    tags: {
+                        "app": config.appName,
+                        "env": process.env.NODE_ENV,
+                        "host": os.hostname(),
+                        "instance": process.env.NODE_APP_INSTANCE,
+                        "method": req.method,
+                        "route": getRoute(req),
+                    },
+                    values: {
+                        "duration": getResponseTime(req, res),
+                        "url": req.url,
+                    }
+                }]
             };
 
-            this.__influxReporter.sent = true;
+            req._influx.sent = true;
 
             debug(report);
+            console.log(report);
             influx.send(report);
-        };
-    }
 
-    function wrapProcessParams(original) {
-        return function(layer, called, req, res, done) {
-            original.apply(this, arguments);
+        }
 
-            if(layer && layer.constructor && layer.constructor.prototype.handle_request) {
-              wrapMethod(
-                  layer.constructor.prototype,
-                  'express.Layer',
-                  'handle_request',
-                  wrapLayerHandleRequest
-              );
-            }
+        // record response start
+        onHeaders(res, recordStartTime);
 
-            res.__influxReporter = res.__influxReporter || {
-                startTime: Date.now(),
-                path: layer.path || req.path,
-                method: req.method,
-                url: req.url,
-                params: {},
-                query: [],
-                names: [],
-            };
+        // log when response finished
+        onFinished(res, logRequest);
 
-            debug('process_params path "%s" layer path "%s" url "%s"', req.path, layer.path, req.url);
-
-
-            res.__influxReporter.path = res.__influxReporter.path || (layer.route && layer.route.path ? layer.route.path : undefined);
-            if (layer.params) Object.keys(layer.params).forEach(function(k) {
-                res.__influxReporter.params[k] = layer.params[k];
-            });
-            if (req.query) Object.keys(req.query).forEach(function(p) {
-                if (res.__influxReporter.query.indexOf(p) === -1) res.__influxReporter.query.push(p);
-            });
-        };
-    }
-
-    function wrapMiddlewareStack(route, original) {
-        return function() {
-            original.apply(this, arguments);
-        };
-    }
+        next();
+    };
 };

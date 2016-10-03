@@ -1,6 +1,6 @@
 {
   "name": "influx-express",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Influxdb nstrumentation for expressjs",
   "main": "index.js",
   "scripts": {
@@ -21,6 +21,8 @@
   },
   "homepage": "https://github.com/cdwv/influx-express#readme",
   "dependencies": {
-    "debug": "^2.2.0"
+    "debug": "^2.2.0",
+    "on-finished": "^2.3.0",
+    "on-headers": "^1.0.1"
   }
 }
