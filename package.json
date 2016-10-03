@@ -1,6 +1,6 @@
 {
   "name": "influx-express",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Influxdb nstrumentation for expressjs",
   "main": "index.js",
   "scripts": {
