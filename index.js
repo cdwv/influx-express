@@ -3,17 +3,20 @@
  * @Date:   2016-10-01T20:08:29+02:00
  * @Email:  grzegorz.daszuta@codewave.pl
  * @Last modified by:   Grzegorz Daszuta
- * @Last modified time: 2016-10-03T08:51:50+02:00
+ * @Last modified time: 2016-10-03T10:18:10+02:00
  */
 
+ /* jshint node: true */
+ /* jshint esversion: 6 */
+ 'use strict';
 
-var Influx = require('influx-udp');
+var Influx = require('./lib/influx-udp');
 var os = require('os');
 var debug = require('debug')('przepisy:influx');
 var util = require('util');
 
 module.exports = function(config, express) {
-    var influx = new Influx({ 
+    var influx = new Influx({
       host: config.influx.host,
       port: config.influx.port,
     });
@@ -39,7 +42,7 @@ module.exports = function(config, express) {
       if (query.length) {
         path = util.format('%s?%s', path, query.join('&'));
       }
-      
+
       debug('path from %s to %s', requestPath, path);
 
       return path;
@@ -68,7 +71,7 @@ module.exports = function(config, express) {
               debug("Log data already sent");
               return;
             }
- 
+
             var report = {
                 [config.influx.dbpath]: [{
                     "app": config.appName,
@@ -81,7 +84,7 @@ module.exports = function(config, express) {
                     "duration": new Date() - this.__influxReporter.startTime,
                 }]
             };
-            
+
             this.__influxReporter.sent = true;
 
             debug(report);
@@ -104,7 +107,7 @@ module.exports = function(config, express) {
             };
 
             debug('process_params path "%s" layer path "%s" url "%s"', req.path, layer.path, req.url);
-          
+
 
             res.__influxReporter.path = res.__influxReporter.path || (layer.route && layer.route.path ? layer.route.path : undefined);
             if (layer.params) Object.keys(layer.params).forEach(function(k) {

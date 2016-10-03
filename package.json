@@ -21,7 +21,6 @@
   },
   "homepage": "https://github.com/cdwv/influx-express#readme",
   "dependencies": {
-    "debug": "^2.2.0",
-    "influx-udp": "^1.0.1"
+    "debug": "^2.2.0"
   }
 }
